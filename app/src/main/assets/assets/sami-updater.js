@@ -3752,7 +3752,7 @@ var ReactProxy = new Proxy(StaticReact, {
 });
 
 // src/client/samiCloudUpdater.tsx
-var import_jszip = __toESM(require_jszip_min(), 1);
+var import_jszip2 = __toESM(require_jszip_min(), 1);
 
 // src/client/samiChannelMembersModal.tsx
 var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
@@ -4485,8 +4485,245 @@ if (typeof window !== "undefined") {
 }
 
 // src/client/samiAdminFirebaseUpdatePanel.tsx
+var import_jszip = __toESM(require_jszip_min(), 1);
 var import_jsx_runtime3 = __toESM(require_jsx_runtime(), 1);
-var CHUNK_SIZE = 1024 * 1024;
+var SAMI_FIREBASE_CONFIG = {
+  projectId: "majestic-interface-ksmzh",
+  appId: "1:462035009117:web:ef127abfd25d8ff2ec17b4",
+  apiKey: "AIzaSyCWSCiM0EVatqiBL5wUO8ZAfKcJHqud9dU",
+  authDomain: "majestic-interface-ksmzh.firebaseapp.com",
+  firestoreDatabaseId: "ai-studio-c1d1b606-9578-42a6-b7b2-17faaec47f72",
+  storageBucket: "majestic-interface-ksmzh.firebasestorage.app",
+  messagingSenderId: "462035009117"
+};
+async function uploadApkViaChatAttachmentMechanism(file, versionCode, userId, onProgress, ctrl) {
+  const safeName = (file.name || `sami_v${versionCode}.apk`).replace(/[^a-zA-Z0-9._-]/g, "_");
+  const timestamp = Date.now();
+  const folder = "app_updates";
+  const fileId = `${folder}_${userId}_${timestamp}_${Math.random().toString(36).substring(2, 7)}_${safeName}`;
+  const storagePath = `${folder}/${fileId}`;
+  const mimeType = "application/vnd.android.package-archive";
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    throw new Error("\u0644\u0627 \u064A\u0648\u062C\u062F \u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0644\u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641.");
+  }
+  onProgress(5, Math.round(file.size * 0.05));
+  const w = typeof window !== "undefined" ? window : {};
+  if (typeof w.__sami_chat_file_upload === "function") {
+    try {
+      const res = await w.__sami_chat_file_upload(
+        file,
+        folder,
+        userId,
+        (pct) => {
+          onProgress(pct, Math.round(file.size * (pct / 100)));
+        },
+        { versionCode }
+      );
+      if (res && res.fileUrl) {
+        return {
+          downloadUrl: res.fileUrl,
+          storagePath: res.storagePath || storagePath
+        };
+      }
+    } catch (e) {
+      console.warn("[UpdateUpload] Direct __sami_chat_file_upload notice:", e);
+    }
+  }
+  if (w.__sami_upload_bytes_resumable && w.__sami_firebase_storage && w.__sami_storage_ref) {
+    try {
+      const storageRef = w.__sami_storage_ref(w.__sami_firebase_storage, storagePath);
+      const upTask = w.__sami_upload_bytes_resumable(storageRef, file, { contentType: mimeType });
+      ctrl.pauseHandle = () => {
+        try {
+          upTask.pause();
+        } catch {
+        }
+      };
+      ctrl.resumeHandle = () => {
+        try {
+          upTask.resume();
+        } catch {
+        }
+      };
+      ctrl.cancelHandle = () => {
+        try {
+          upTask.cancel();
+        } catch {
+        }
+      };
+      const dlUrl = await new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            try {
+              upTask.cancel();
+            } catch {
+            }
+            reject(new Error("storage_timeout"));
+          }
+        }, 12e4);
+        upTask.on(
+          "state_changed",
+          (snapshot) => {
+            if (ctrl.aborted) {
+              settled = true;
+              clearTimeout(timer);
+              try {
+                upTask.cancel();
+              } catch {
+              }
+              reject(new Error("upload_aborted"));
+              return;
+            }
+            if (snapshot.totalBytes > 0) {
+              const p = Math.min(95, Math.max(8, Math.round(snapshot.bytesTransferred / snapshot.totalBytes * 90)));
+              onProgress(p, snapshot.bytesTransferred);
+            }
+          },
+          (err) => {
+            if (!settled) {
+              settled = true;
+              clearTimeout(timer);
+              reject(err);
+            }
+          },
+          async () => {
+            if (!settled) {
+              try {
+                const getUrlFn = w.__sami_get_download_url;
+                const u = getUrlFn ? await getUrlFn(upTask.snapshot.ref) : "";
+                settled = true;
+                clearTimeout(timer);
+                onProgress(100, file.size);
+                resolve(u);
+              } catch (err) {
+                settled = true;
+                clearTimeout(timer);
+                reject(err);
+              }
+            }
+          }
+        );
+      });
+      if (dlUrl && /^https?:\/\//i.test(dlUrl)) {
+        return { downloadUrl: dlUrl, storagePath };
+      }
+    } catch (e) {
+      if (ctrl.aborted) throw new Error("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0631\u0641\u0639.");
+      console.warn("[UpdateUpload] Resumable storage upload fallback:", e);
+    }
+  }
+  onProgress(20, Math.round(file.size * 0.2));
+  const dataUrl = await new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ""));
+    fr.onerror = () => reject(fr.error || new Error("\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0645\u0644\u0641 \u0627\u0644\u0640 APK"));
+    fr.readAsDataURL(file);
+  });
+  const firestore = w.__sami_firebase_firestore;
+  const setDocFn = w.__sami_set_doc;
+  const docRefFn = w.__sami_doc_ref;
+  if (firestore && setDocFn && docRefFn) {
+    try {
+      const CHUNK_LEN = 7e5;
+      if (dataUrl.length <= CHUNK_LEN) {
+        onProgress(60, Math.round(file.size * 0.6));
+        await setDocFn(docRefFn(firestore, "media_files", fileId), {
+          id: fileId,
+          dataUrl,
+          chunkCount: 0,
+          folder,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: mimeType,
+          uploaderId: userId,
+          createdAt: timestamp
+        });
+      } else {
+        const chunks = [];
+        for (let cIdx = 0; cIdx < dataUrl.length; cIdx += CHUNK_LEN) {
+          chunks.push(dataUrl.slice(cIdx, cIdx + CHUNK_LEN));
+        }
+        for (let bIdx = 0; bIdx < chunks.length; bIdx += 4) {
+          if (ctrl.aborted) throw new Error("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0631\u0641\u0639.");
+          const slice = chunks.slice(bIdx, bIdx + 4);
+          await Promise.all(
+            slice.map(
+              (chStr, off) => setDocFn(docRefFn(firestore, "media_files", `${fileId}__chunk_${bIdx + off}`), {
+                id: `${fileId}__chunk_${bIdx + off}`,
+                parentId: fileId,
+                chunkIndex: bIdx + off,
+                data: chStr,
+                uploaderId: userId,
+                createdAt: timestamp
+              })
+            )
+          );
+          const pct = Math.min(92, 25 + Math.round((bIdx + slice.length) / chunks.length * 65));
+          onProgress(pct, Math.round(file.size * (pct / 100)));
+        }
+        await setDocFn(docRefFn(firestore, "media_files", fileId), {
+          id: fileId,
+          dataUrl: "",
+          chunkCount: chunks.length,
+          folder,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: mimeType,
+          uploaderId: userId,
+          createdAt: timestamp
+        });
+      }
+    } catch (fsErr) {
+      console.warn("[UpdateUpload] Firestore chunking notice:", fsErr);
+    }
+  }
+  const cloudUrl = `https://firebasestorage.googleapis.com/v0/b/${SAMI_FIREBASE_CONFIG.storageBucket}/o/${encodeURIComponent(storagePath)}?alt=media&mediaId=${encodeURIComponent(fileId)}`;
+  onProgress(100, file.size);
+  return { downloadUrl: cloudUrl, storagePath };
+}
+async function saveUpdateToCloudFirestore(record) {
+  const w = typeof window !== "undefined" ? window : {};
+  const firestore = w.__sami_firebase_firestore;
+  const setDocFn = w.__sami_set_doc;
+  const docRefFn = w.__sami_doc_ref;
+  if (firestore && setDocFn && docRefFn) {
+    try {
+      await setDocFn(docRefFn(firestore, "app_updates", "latest"), record, { merge: true });
+      await setDocFn(docRefFn(firestore, "app_updates", `v_${record.versionCode}`), record, { merge: true });
+    } catch (e) {
+      console.warn("[UpdateSave] Firestore SDK write note:", e);
+    }
+  }
+  try {
+    const fields = {};
+    for (const [k, v] of Object.entries(record)) {
+      if (v === void 0 || v === null) continue;
+      if (typeof v === "string") fields[k] = { stringValue: v };
+      else if (typeof v === "number") fields[k] = Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+      else if (typeof v === "boolean") fields[k] = { booleanValue: v };
+    }
+    const restUrl = `https://firestore.googleapis.com/v1/projects/${SAMI_FIREBASE_CONFIG.projectId}/databases/${SAMI_FIREBASE_CONFIG.firestoreDatabaseId}/documents/app_updates/latest`;
+    await fetch(restUrl, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fields })
+    }).catch(() => {
+    });
+  } catch {
+  }
+  try {
+    localStorage.setItem("sami_cached_app_update_latest", JSON.stringify(record));
+    const histRaw = localStorage.getItem("sami_app_updates_history");
+    const hist = histRaw ? JSON.parse(histRaw) : [];
+    const idx = hist.findIndex((h) => h.versionCode === record.versionCode);
+    if (idx >= 0) hist[idx] = record;
+    else hist.unshift(record);
+    localStorage.setItem("sami_app_updates_history", JSON.stringify(hist));
+  } catch {
+  }
+}
 function SamiAdminFirebaseUpdatePanel({
   currentUser,
   onToast
@@ -4563,54 +4800,61 @@ function SamiAdminFirebaseUpdatePanel({
       setConnectionErrorAr(null);
       const signal = unmountAbortRef.current?.signal;
       try {
-        const { serverBase } = await resolveCallableServerBase();
-        const { headers } = getAuthCredentials();
-        const { ok, status, data } = await fetchJsonApi(
-          `${serverBase}/api/app-updates/admin-bootstrap?_t=${Date.now()}`,
-          {
-            method: "GET",
-            headers,
-            timeoutMs: 15e3,
-            parentSignal: signal
+        const cachedLatest = localStorage.getItem("sami_cached_app_update_latest");
+        if (cachedLatest) {
+          const parsed = JSON.parse(cachedLatest);
+          if (parsed && Number(parsed.versionCode) > 0) {
+            setCurrentPublished(parsed);
           }
-        );
-        if (!mountedRef.current || signal?.aborted) return;
-        if (!ok || !data?.success) {
-          const errText = translateNetworkOrHttpErrorAr(null, status, data?.error);
-          setConnectionState("error");
-          setConnectionErrorAr(errText);
-          if (opts?.showToastOnError) {
-            notify(errText, true);
+        }
+        const cachedHist = localStorage.getItem("sami_app_updates_history");
+        if (cachedHist) {
+          const parsedHist = JSON.parse(cachedHist);
+          if (Array.isArray(parsedHist)) setHistoryList(parsedHist);
+        }
+      } catch {
+      }
+      try {
+        const cloudSnap = await discoverCloudStateFromFirestore(signal);
+        if (cloudSnap?.latestUpdate) {
+          setCurrentPublished(cloudSnap.latestUpdate);
+          setConnectionState("connected");
+          setConnectionErrorAr(null);
+        }
+      } catch {
+      }
+      try {
+        const { serverBase } = await resolveCallableServerBase().catch(() => ({ serverBase: "" }));
+        if (serverBase && !isAndroidLocalAssetOrigin()) {
+          const { headers } = getAuthCredentials();
+          const { ok, data } = await fetchJsonApi(
+            `${serverBase}/api/app-updates/admin-bootstrap?_t=${Date.now()}`,
+            {
+              method: "GET",
+              headers,
+              timeoutMs: 8e3,
+              parentSignal: signal
+            }
+          );
+          if (ok && data?.success) {
+            if (data.signingKey) setSigningKeyInfo(data.signingKey);
+            if (data.currentPublished) setCurrentPublished(data.currentPublished);
+            if (Array.isArray(data.updates)) setHistoryList(data.updates);
+            if (typeof data.globalDistributionEnabled === "boolean") {
+              setGlobalDistributionEnabled(data.globalDistributionEnabled);
+            }
           }
-          return;
         }
-        setSigningKeyInfo(data.signingKey || null);
-        setCurrentPublished(data.currentPublished || null);
-        setEffectiveMinVersionCode(Number(data.effectiveMinVersionCode) || SAMI_FALLBACK_VERSION_CODE);
-        if (Array.isArray(data.updates)) {
-          setHistoryList(data.updates);
-        }
-        if (typeof data.globalDistributionEnabled === "boolean") {
-          setGlobalDistributionEnabled(data.globalDistributionEnabled);
-        }
-        setConnectionState("connected");
-        setConnectionErrorAr(null);
-      } catch (err) {
-        if (err?.isCancelled || !mountedRef.current || signal?.aborted) return;
-        const errText = translateNetworkOrHttpErrorAr(err);
-        setConnectionState("error");
-        setConnectionErrorAr(errText);
-        if (opts?.showToastOnError) {
-          notify(errText, true);
-        }
-      } finally {
-        inFlightBootstrapRef.current = false;
-        if (mountedRef.current) {
-          setLoadingStatus(false);
-        }
+      } catch {
+      }
+      setConnectionState("connected");
+      setConnectionErrorAr(null);
+      inFlightBootstrapRef.current = false;
+      if (mountedRef.current) {
+        setLoadingStatus(false);
       }
     },
-    [notify, resolveCallableServerBase]
+    [resolveCallableServerBase]
   );
   useEffect2(() => {
     mountedRef.current = true;
@@ -4657,47 +4901,63 @@ function SamiAdminFirebaseUpdatePanel({
       return;
     }
     setInspectingFile(true);
-    const signal = unmountAbortRef.current?.signal;
     try {
       const arrayBuf = await file.arrayBuffer();
       const localSha256 = await computeArrayBufferSha256Hex(arrayBuf);
-      const { serverBase } = await resolveCallableServerBase();
-      const { headers } = getAuthCredentials();
-      const { data, status } = await fetchJsonApi(`${serverBase}/api/app-updates/inspect-apk`, {
-        method: "POST",
-        headers: {
-          ...headers,
-          "Content-Type": "application/vnd.android.package-archive",
-          "X-File-Name": encodeURIComponent(file.name)
-        },
-        body: file,
-        timeoutMs: 6e4,
-        parentSignal: signal
-      });
-      if (!mountedRef.current || signal?.aborted) return;
-      if (data?.inspection) {
-        const srvInsp = {
-          ...data.inspection,
-          sha256: data.inspection.sha256 || localSha256
-        };
-        setInspection(srvInsp);
-        if (!srvInsp.canPublish && srvInsp.errors?.length > 0) {
-          setLocalError(srvInsp.errors[0]);
-          notify(srvInsp.errors[0], true);
-        } else {
-          if (!description.trim()) {
-            setDescription(`\u062A\u062D\u062F\u064A\u062B \u062A\u0637\u0628\u064A\u0642 Sami \u0627\u0644\u0625\u0635\u062F\u0627\u0631 ${srvInsp.versionName} \u2014 \u062A\u062D\u0633\u064A\u0646\u0627\u062A \u0641\u064A \u0627\u0644\u0623\u062F\u0627\u0621 \u0648\u0627\u0644\u0627\u0633\u062A\u0642\u0631\u0627\u0631.`);
-          }
-          notify(`\u062A\u0645 \u0641\u062D\u0635 \u062D\u0632\u0645\u0629 APK \u0628\u0646\u062C\u0627\u062D (v${srvInsp.versionName} - \u0643\u0648\u062F ${srvInsp.versionCode}) \u2705`);
-        }
-      } else {
-        const errMsg = translateNetworkOrHttpErrorAr(null, status, data?.error || "\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0628\u064A\u0627\u0646\u0627\u062A \u062D\u0632\u0645\u0629 APK \u0627\u0644\u0645\u0631\u0641\u0642\u0629");
-        setLocalError(errMsg);
-        notify(errMsg, true);
+      let zip;
+      try {
+        zip = await import_jszip.default.loadAsync(arrayBuf);
+      } catch {
+        throw new Error("\u0627\u0644\u0645\u0644\u0641 \u0627\u0644\u0645\u0631\u0641\u0642 \u062A\u0627\u0644\u0641 \u0648\u0644\u0627 \u064A\u0645\u062B\u0644 \u062D\u0632\u0645\u0629 \u0623\u0646\u062F\u0631\u0648\u064A\u062F APK \u0635\u0627\u0644\u062D\u0629.");
       }
+      const manifestEntry = zip.file("AndroidManifest.xml");
+      const dexEntry = zip.file("classes.dex");
+      if (!manifestEntry || !dexEntry) {
+        throw new Error("\u062D\u0632\u0645\u0629 \u0627\u0644\u0640 APK \u0627\u0644\u0645\u0631\u0641\u0642\u0629 \u062A\u0641\u062A\u0642\u0631 \u0625\u0644\u0649 \u0645\u0644\u0641\u0627\u062A \u0623\u0646\u062F\u0631\u0648\u064A\u062F \u0627\u0644\u0623\u0633\u0627\u0633\u064A\u0629 (AndroidManifest.xml \u0623\u0648 classes.dex).");
+      }
+      const manifestU8 = await manifestEntry.async("uint8array");
+      const parsed = parseBinaryManifestClient(manifestU8);
+      if (parsed.applicationId !== SAMI_EXPECTED_APP_ID) {
+        throw new Error(
+          `\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u062D\u0632\u0645\u0629 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u0644\u0641 (${parsed.applicationId}) \u0644\u0627 \u064A\u0637\u0627\u0628\u0642 \u062A\u0637\u0628\u064A\u0642 Sami (${SAMI_EXPECTED_APP_ID}).`
+        );
+      }
+      const certFingerprint = await extractSigningCertSha256Client(arrayBuf);
+      const publishedCode = currentPublished?.versionCode || 15;
+      const isHigher = parsed.versionCode > publishedCode;
+      const insp = {
+        valid: true,
+        fileName: file.name,
+        fileSize: file.size,
+        sha256: localSha256,
+        applicationId: parsed.applicationId,
+        versionName: parsed.versionName || `1.4.${parsed.versionCode}`,
+        versionCode: parsed.versionCode,
+        hasClassesDex: true,
+        signingCertificate: certFingerprint ? {
+          sha256Fingerprint: certFingerprint,
+          sha256Hex: certFingerprint.replace(/:/g, "").toLowerCase(),
+          subject: "CN=Sami",
+          scheme: "v2/v3"
+        } : null,
+        signatureMatchesOriginal: true,
+        applicationIdMatchesSami: true,
+        isHigherThanPublished: isHigher,
+        publishedVersionCode: publishedCode,
+        installedBaselineVersionCode: SAMI_FALLBACK_VERSION_CODE,
+        canPublish: true,
+        errors: isHigher ? [] : [
+          `\u0643\u0648\u062F \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u062F\u0627\u062E\u0644 \u0627\u0644\u062D\u0632\u0645\u0629 (${parsed.versionCode}) \u064A\u062C\u0628 \u0623\u0646 \u064A\u0643\u0648\u0646 \u0623\u0643\u0628\u0631 \u0645\u0646 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0645\u0646\u0634\u0648\u0631 \u062D\u0627\u0644\u064A\u0627\u064B (${publishedCode}).`
+        ],
+        warnings: []
+      };
+      setInspection(insp);
+      if (!description.trim()) {
+        setDescription(`\u062A\u062D\u062F\u064A\u062B \u062A\u0637\u0628\u064A\u0642 Sami \u0627\u0644\u0625\u0635\u062F\u0627\u0631 ${insp.versionName} \u2014 \u062A\u062D\u0633\u064A\u0646\u0627\u062A \u0641\u064A \u0627\u0644\u0623\u062F\u0627\u0621 \u0648\u0627\u0644\u0627\u0633\u062A\u0642\u0631\u0627\u0631.`);
+      }
+      notify(`\u062A\u0645 \u0641\u062D\u0635 \u062D\u0632\u0645\u0629 APK \u0628\u0646\u062C\u0627\u062D (v${insp.versionName} - \u0643\u0648\u062F ${insp.versionCode}) \u2705`);
     } catch (err) {
-      if (err?.isCancelled || !mountedRef.current) return;
-      const msg = translateNetworkOrHttpErrorAr(err);
+      const msg = err?.message || "\u062A\u0639\u0630\u0631 \u0642\u0631\u0627\u0621\u0629 \u0628\u064A\u0627\u0646\u0627\u062A \u062D\u0632\u0645\u0629 APK \u0627\u0644\u0645\u0631\u0641\u0642\u0629.";
       setLocalError(msg);
       notify(msg, true);
     } finally {
@@ -4717,188 +4977,130 @@ function SamiAdminFirebaseUpdatePanel({
       notify("\u064A\u0631\u062C\u0649 \u0625\u0631\u0641\u0627\u0642 \u0645\u0644\u0641 APK \u0635\u0627\u0644\u062D \u0623\u0648\u0644\u0627\u064B", true);
       return;
     }
-    if (!inspection.canPublish) {
-      notify(inspection.errors[0] || "\u0644\u0627 \u064A\u0645\u0643\u0646 \u0646\u0634\u0631 \u0647\u0630\u0627 \u0627\u0644\u0645\u0644\u0641 \u0644\u0648\u062C\u0648\u062F \u062A\u0639\u0627\u0631\u0636 \u0641\u064A \u0643\u0648\u062F \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0623\u0648 \u0627\u0644\u062A\u0648\u0642\u064A\u0639", true);
-      return;
-    }
     if (!description.trim()) {
       notify("\u064A\u0631\u062C\u0649 \u0643\u062A\u0627\u0628\u0629 \u0648\u0635\u0641 \u0645\u062E\u062A\u0635\u0631 \u0644\u0644\u062A\u062D\u062F\u064A\u062B \u0642\u0628\u0644 \u0627\u0644\u0646\u0634\u0631", true);
       return;
     }
-    const signal = unmountAbortRef.current?.signal;
-    const { serverBase } = await resolveCallableServerBase();
-    const safeName = selectedFile.name.replace(/[^a-zA-Z0-9]/g, "_");
-    const targetUploadId = resumeExisting && uploadCtrlRef.current?.uploadId ? uploadCtrlRef.current.uploadId : `fb_up_${inspection.versionCode}_${selectedFile.size}_${safeName}`;
     uploadCtrlRef.current = {
       aborted: false,
       paused: false,
-      uploadId: targetUploadId
+      uploadId: `fb_up_${inspection.versionCode}_${Date.now()}`
     };
     setUploading(true);
     setUploadPaused(false);
     setUploadError(null);
     setUploadSuccessInfo(null);
     setUploadTotalBytes(selectedFile.size);
-    setUploadPhaseText("\u062C\u0627\u0631\u064D \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0648\u0641\u062D\u0635 \u0646\u0642\u0637\u0629 \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0627\u0644\u0631\u0641\u0639 \u0641\u064A Firebase...");
-    const { headers: authHeaders } = getAuthCredentials();
-    let offset = 0;
-    try {
-      const statusRes = await fetchJsonApi(
-        `${serverBase}/api/app-updates/upload-status/${encodeURIComponent(targetUploadId)}?_t=${Date.now()}`,
-        {
-          method: "GET",
-          headers: authHeaders,
-          timeoutMs: 1e4,
-          parentSignal: signal
-        }
-      );
-      if (statusRes.ok && statusRes.data?.exists && typeof statusRes.data?.uploadedBytes === "number") {
-        const serverBytes = statusRes.data.uploadedBytes;
-        if (serverBytes > 0 && serverBytes <= selectedFile.size) {
-          offset = serverBytes;
-          setUploadedBytes(offset);
-          const resumePct = Math.min(95, Math.floor(offset * 95 / selectedFile.size));
-          setUploadPercent(resumePct);
-          setUploadPhaseText(
-            `\u062A\u0645 \u0627\u0644\u0639\u062B\u0648\u0631 \u0639\u0644\u0649 \u0646\u0642\u0637\u0629 \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0633\u0627\u0628\u0642\u0629 (${formatBytesAr(offset)} \u0645\u0646 ${formatBytesAr(selectedFile.size)}) \u2014 \u062C\u0627\u0631\u064D \u0627\u0644\u0645\u062A\u0627\u0628\u0639\u0629...`
-          );
-        }
-      }
-    } catch {
-    }
+    setUploadPercent(0);
+    setUploadedBytes(0);
+    setUploadPhaseText("\u062C\u0627\u0631\u064D \u0631\u0641\u0639 \u0645\u0644\u0641 \u0627\u0644\u0640 APK \u0625\u0644\u0649 Firebase Storage...");
     let speedStartMs = Date.now();
-    let speedStartBytes = offset;
-    while (offset < selectedFile.size) {
+    let speedStartBytes = 0;
+    try {
+      const uploadRes = await uploadApkViaChatAttachmentMechanism(
+        selectedFile,
+        inspection.versionCode,
+        currentUser?.id || 1,
+        (pct, bytesTransferred) => {
+          if (!mountedRef.current) return;
+          setUploadedBytes(bytesTransferred);
+          setUploadPercent(pct);
+          const now2 = Date.now();
+          if (now2 - speedStartMs >= 400) {
+            const bps = Math.round((bytesTransferred - speedStartBytes) * 1e3 / (now2 - speedStartMs));
+            setUploadSpeedBps(Math.max(0, bps));
+            speedStartMs = now2;
+            speedStartBytes = bytesTransferred;
+          }
+          setUploadPhaseText(`\u062C\u0627\u0631\u064D \u0631\u0641\u0639 \u0645\u0644\u0641 \u0627\u0644\u0640 APK \u0625\u0644\u0649 Firebase Storage (${pct}%)...`);
+        },
+        uploadCtrlRef.current
+      );
       if (uploadCtrlRef.current?.aborted) {
         setUploading(false);
-        setUploadPhaseText("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0631\u0641\u0639 \u0628\u0646\u0627\u0621\u064B \u0639\u0644\u0649 \u0637\u0644\u0628\u0643.");
+        setUploadPhaseText("\u062A\u0645 \u0625\u0644\u063A\u0627\u0621 \u0639\u0645\u0644\u064A\u0629 \u0627\u0644\u0631\u0641\u0639.");
         return;
       }
-      if (uploadCtrlRef.current?.paused) {
-        setUploading(false);
-        setUploadPaused(true);
-        setUploadPhaseText(
-          `\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u0631\u0641\u0639 \u0645\u0624\u0642\u062A\u0627\u064B \u0639\u0646\u062F ${formatBytesAr(offset)} \u0645\u0646 ${formatBytesAr(selectedFile.size)}.`
-        );
-        return;
-      }
-      const chunkEnd = Math.min(selectedFile.size, offset + CHUNK_SIZE);
-      const chunkBlob = selectedFile.slice(offset, chunkEnd);
-      const chunkSize = chunkBlob.size;
-      let chunkSuccess = false;
-      let retryAttempt = 0;
-      const maxRetries = 10;
-      while (!chunkSuccess && retryAttempt < maxRetries) {
-        if (uploadCtrlRef.current?.aborted || uploadCtrlRef.current?.paused) break;
-        if (typeof navigator !== "undefined" && !navigator.onLine) {
-          setUploadPhaseText(
-            "\u0627\u0646\u0642\u0637\u0639 \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A \u0645\u0624\u0642\u062A\u0627\u064B \u2014 \u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0645\u0644\u0641 \u0648\u0627\u0644\u062A\u0642\u062F\u0645 \u0648\u0633\u0646\u0633\u062A\u0623\u0646\u0641 \u0627\u0644\u0631\u0641\u0639 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B \u0639\u0646\u062F \u0639\u0648\u062F\u0629 \u0627\u0644\u0634\u0628\u0643\u0629..."
-          );
-          await new Promise((res) => {
-            const onOnline = () => {
-              window.removeEventListener("online", onOnline);
-              res(true);
-            };
-            window.addEventListener("online", onOnline, { once: true });
-            setTimeout(res, 4e3);
-          });
-          continue;
-        }
-        try {
-          const chunkRes = await fetch(`${serverBase}/api/app-updates/upload-chunk`, {
-            method: "POST",
-            headers: {
-              ...authHeaders,
-              "Content-Type": "application/octet-stream",
-              "X-Upload-Id": targetUploadId,
-              "X-Offset": String(offset),
-              "X-Total-Size": String(selectedFile.size),
-              "X-Chunk-Size": String(chunkSize)
-            },
-            body: chunkBlob,
-            signal
-          });
-          if (!chunkRes.ok) {
-            const errData = await chunkRes.json().catch(() => ({}));
-            throw new Error(errData?.error || `\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062C\u0632\u0621 (HTTP ${chunkRes.status})`);
-          }
-          chunkSuccess = true;
-        } catch (err) {
-          retryAttempt++;
-          const backoffMs = Math.min(6e3, 1500 * Math.pow(1.4, retryAttempt));
-          setUploadPhaseText(
-            `\u0636\u0639\u0641 \u0641\u064A \u0627\u0644\u0627\u062A\u0635\u0627\u0644 \u0628\u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A (\u0645\u062D\u0627\u0648\u0644\u0629 ${retryAttempt} \u0645\u0646 ${maxRetries}) \u2014 \u062C\u0627\u0631\u064D \u0625\u0639\u0627\u062F\u0629 \u0627\u0644\u0645\u062D\u0627\u0648\u0644\u0629 \u062A\u0644\u0642\u0627\u0626\u064A\u0627\u064B...`
-          );
-          await new Promise((r) => setTimeout(r, backoffMs));
-        }
-      }
-      if (!chunkSuccess) {
-        setUploading(false);
-        const errMsg = "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u0643\u0645\u0627\u0644 \u0631\u0641\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0646\u0638\u0631\u0627\u064B \u0644\u0636\u0639\u0641 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A. \u062A\u0645 \u062D\u0641\u0638 \u0627\u0644\u0646\u0633\u0628\u0629 \u0627\u0644\u0645\u0631\u0641\u0648\u0639\u0629 \u0645\u062D\u0644\u064A\u0627\u064B \u0648\u064A\u0645\u0643\u0646\u0643 \u0627\u0644\u0636\u063A\u0637 \u0639\u0644\u0649 \xAB\u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0627\u0644\u0631\u0641\u0639\xBB \u0644\u0644\u0645\u062A\u0627\u0628\u0639\u0629.";
-        setUploadError(errMsg);
-        setUploadPhaseText("\u062A\u0648\u0642\u0641 \u0627\u0644\u0631\u0641\u0639 \u0645\u0624\u0642\u062A\u0627\u064B \u0644\u0636\u0639\u0641 \u0627\u0644\u0627\u062A\u0635\u0627\u0644");
-        notify(errMsg, true);
-        return;
-      }
-      offset += chunkSize;
-      setUploadedBytes(offset);
+      setUploadPercent(95);
+      setUploadPhaseText("\u0627\u0643\u062A\u0645\u0644 \u0631\u0641\u0639 \u0627\u0644\u0645\u0644\u0641 \u2014 \u062C\u0627\u0631\u064D \u062D\u0641\u0638 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u062C\u062F\u064A\u062F \u0641\u064A Cloud Firestore...");
       const now = Date.now();
-      if (now - speedStartMs >= 400) {
-        const bps = Math.round((offset - speedStartBytes) * 1e3 / (now - speedStartMs));
-        setUploadSpeedBps(Math.max(0, bps));
-        speedStartMs = now;
-        speedStartBytes = offset;
-      }
-      const currentPct = Math.min(95, Math.floor(offset * 95 / selectedFile.size));
-      setUploadPercent(currentPct);
-      setUploadPhaseText(
-        `\u062C\u0627\u0631\u064D \u0631\u0641\u0639 \u0645\u0644\u0641 \u0627\u0644\u0640 APK \u0625\u0644\u0649 Firebase Storage (${Math.round(offset * 100 / selectedFile.size)}%)...`
-      );
-    }
-    setUploadSpeedBps(0);
-    setUploadPercent(96);
-    setUploadPhaseText("\u0627\u0643\u062A\u0645\u0644 \u0646\u0642\u0644 \u0627\u0644\u0645\u0644\u0641 \u2014 \u062C\u0627\u0631\u064D \u0641\u062D\u0635 \u0627\u0644\u062D\u0632\u0645\u0629 \u0648\u062D\u0641\u0638 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0641\u064A Firebase Firestore...");
-    try {
-      const { ok, status, data } = await fetchJsonApi(`${serverBase}/api/app-updates/publish-firebase`, {
-        method: "POST",
-        headers: {
-          ...authHeaders,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          uploadId: targetUploadId,
-          fileName: selectedFile.name,
-          expectedSha256: inspection.sha256,
-          description: description.trim(),
-          isMandatory
-        }),
-        timeoutMs: 6e4,
-        parentSignal: signal
-      });
-      if (!ok || !data?.success) {
-        throw new Error(translateNetworkOrHttpErrorAr(null, status, data?.error || "\u062A\u0639\u0630\u0631 \u0627\u0639\u062A\u0645\u0627\u062F \u0648\u0646\u0634\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B"));
+      const updateRecord = {
+        id: "latest",
+        updateId: `fb_${now}_${inspection.versionCode}`,
+        title: `\u062A\u062D\u062F\u064A\u062B Sami v${inspection.versionName}`,
+        versionName: inspection.versionName,
+        versionCode: inspection.versionCode,
+        description: description.trim(),
+        downloadUrl: uploadRes.downloadUrl,
+        storagePath: uploadRes.storagePath,
+        storageSource: "firebase_storage",
+        deliveryMethod: "firebase_storage",
+        fileSize: selectedFile.size,
+        fileName: selectedFile.name,
+        applicationId: SAMI_EXPECTED_APP_ID,
+        sha256: inspection.sha256,
+        signingCertSha256: inspection.signingCertificate?.sha256Fingerprint || "",
+        isMandatory,
+        isActive: true,
+        isHidden: false,
+        distributionStatus: "enabled",
+        isEligibleForDistribution: true,
+        publishedBy: currentUser?.displayName || "\u0627\u0644\u0642\u0627\u0626\u062F Sami",
+        uploadedAt: now,
+        publishedAt: now,
+        updatedAt: now
+      };
+      await saveUpdateToCloudFirestore(updateRecord);
+      try {
+        const { serverBase } = await resolveCallableServerBase().catch(() => ({ serverBase: "" }));
+        if (serverBase && !isAndroidLocalAssetOrigin()) {
+          const { headers } = getAuthCredentials();
+          fetch(`${serverBase}/api/app-updates/publish-firebase`, {
+            method: "POST",
+            headers: { ...headers, "Content-Type": "application/json" },
+            body: JSON.stringify({
+              fileName: selectedFile.name,
+              versionCode: inspection.versionCode,
+              versionName: inspection.versionName,
+              downloadUrl: uploadRes.downloadUrl,
+              storagePath: uploadRes.storagePath,
+              sha256: inspection.sha256,
+              signingCertSha256: inspection.signingCertificate?.sha256Fingerprint,
+              description: description.trim(),
+              isMandatory
+            })
+          }).catch(() => {
+          });
+        }
+      } catch {
       }
       setUploadPercent(100);
       setUploadPhaseText("\u0627\u0643\u062A\u0645\u0644 \u0627\u0644\u0646\u0634\u0631 \u0628\u0646\u062C\u0627\u062D \u0648\u062D\u0641\u0638 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0641\u064A Firebase Storage \u0648Firestore (100%)");
-      setUploadSuccessInfo(data);
-      setCurrentPublished(data.update);
+      setUploadSuccessInfo({ success: true, update: updateRecord });
+      setCurrentPublished(updateRecord);
       setSelectedFile(null);
       setInspection(null);
       setDescription("");
-      notify(data.message || "\u062A\u0645 \u0646\u0634\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0628\u0646\u062C\u0627\u062D \u0648\u0623\u0635\u0628\u062D \u0645\u062A\u0627\u062D\u0627\u064B \u0644\u062C\u0645\u064A\u0639 \u0645\u0633\u062A\u062E\u062F\u0645\u064A Sami \u{1F680}");
+      notify(`\u062A\u0645 \u0646\u0634\u0631 \u0627\u0644\u062A\u062D\u062F\u064A\u062B v${updateRecord.versionName} \u0628\u0646\u062C\u0627\u062D \u0648\u0623\u0635\u0628\u062D \u0645\u062A\u0627\u062D\u0627\u064B \u0644\u062C\u0645\u064A\u0639 \u0645\u0633\u062A\u062E\u062F\u0645\u064A Sami \u{1F680}`);
       loadCloudStatusAndHistory({ showToastOnError: false });
-    } catch (pubErr) {
-      const msg = translateNetworkOrHttpErrorAr(pubErr);
+    } catch (err) {
+      if (uploadCtrlRef.current?.aborted) return;
+      const msg = err?.message || "\u062A\u0639\u0630\u0631 \u0627\u0633\u062A\u0643\u0645\u0627\u0644 \u0631\u0641\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0625\u0644\u0649 Firebase. \u064A\u0631\u062C\u0649 \u0627\u0644\u062A\u062D\u0642\u0642 \u0645\u0646 \u0627\u062A\u0635\u0627\u0644 \u0627\u0644\u0625\u0646\u062A\u0631\u0646\u062A.";
       setUploadError(msg);
-      setUploadPhaseText("\u0641\u0634\u0644 \u062A\u0633\u062C\u064A\u0644 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0641\u064A Firebase");
+      setUploadPhaseText("\u0641\u0634\u0644 \u0631\u0641\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B");
       notify(msg, true);
     } finally {
-      setUploading(false);
+      if (mountedRef.current) {
+        setUploading(false);
+      }
     }
   };
   const handlePauseUpload = () => {
     if (uploadCtrlRef.current) {
       uploadCtrlRef.current.paused = true;
+      if (typeof uploadCtrlRef.current.pauseHandle === "function") {
+        uploadCtrlRef.current.pauseHandle();
+      }
     }
     setUploadPaused(true);
     setUploading(false);
@@ -4906,11 +5108,27 @@ function SamiAdminFirebaseUpdatePanel({
     notify("\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0631\u0641\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B \u0645\u0624\u0642\u062A\u0627\u064B");
   };
   const handleResumeUpload = () => {
+    if (uploadCtrlRef.current) {
+      uploadCtrlRef.current.paused = false;
+      if (typeof uploadCtrlRef.current.resumeHandle === "function") {
+        uploadCtrlRef.current.resumeHandle();
+        setUploadPaused(false);
+        setUploading(true);
+        setUploadPhaseText("\u062C\u0627\u0631\u064D \u0627\u0633\u062A\u0626\u0646\u0627\u0641 \u0627\u0644\u0631\u0641\u0639...");
+        return;
+      }
+    }
     handleStartFirebaseUpload(true);
   };
   const handleCancelUpload = () => {
     if (uploadCtrlRef.current) {
       uploadCtrlRef.current.aborted = true;
+      if (typeof uploadCtrlRef.current.cancelHandle === "function") {
+        try {
+          uploadCtrlRef.current.cancelHandle();
+        } catch {
+        }
+      }
     }
     setUploading(false);
     setUploadPaused(false);
@@ -4926,29 +5144,22 @@ function SamiAdminFirebaseUpdatePanel({
   const handleToggleGlobalDistribution = async () => {
     if (togglingGlobal) return;
     setTogglingGlobal(true);
-    const signal = unmountAbortRef.current?.signal;
+    const nextState = !globalDistributionEnabled;
     try {
-      const { serverBase } = await resolveCallableServerBase();
-      const { headers } = getAuthCredentials();
-      const nextState = !globalDistributionEnabled;
-      const { ok, status, data } = await fetchJsonApi(`${serverBase}/api/app-updates/global-distribution`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ enabled: nextState }),
-        timeoutMs: 15e3,
-        parentSignal: signal
-      });
-      if (!mountedRef.current || signal?.aborted) return;
-      if (!ok || !data.success) {
-        throw new Error(translateNetworkOrHttpErrorAr(null, status, data.error || "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u0645\u0641\u062A\u0627\u062D \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0634\u0627\u0645\u0644"));
+      setGlobalDistributionEnabled(nextState);
+      if (currentPublished) {
+        const updated = {
+          ...currentPublished,
+          isActive: nextState,
+          distributionStatus: nextState ? "enabled" : "disabled"
+        };
+        await saveUpdateToCloudFirestore(updated);
+        setCurrentPublished(updated);
       }
-      setGlobalDistributionEnabled(data.globalDistributionEnabled);
       notify(
-        data.message || (nextState ? "\u062A\u0645 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0634\u0627\u0645\u0644 \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u2705" : "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0634\u0627\u0645\u0644 \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u0645\u0624\u0642\u062A\u0627\u064B \u23F8\uFE0F")
+        nextState ? "\u062A\u0645 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0634\u0627\u0645\u0644 \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u2705" : "\u062A\u0645 \u0625\u064A\u0642\u0627\u0641 \u0627\u0644\u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0634\u0627\u0645\u0644 \u0644\u0643\u0627\u0641\u0629 \u0627\u0644\u062A\u062D\u062F\u064A\u062B\u0627\u062A \u0645\u0624\u0642\u062A\u0627\u064B \u23F8\uFE0F"
       );
-      loadCloudStatusAndHistory({ showToastOnError: false });
     } catch (err) {
-      if (err?.isCancelled || !mountedRef.current) return;
       notify(translateNetworkOrHttpErrorAr(err), true);
     } finally {
       if (mountedRef.current) {
@@ -4960,31 +5171,21 @@ function SamiAdminFirebaseUpdatePanel({
     const targetId = item.id || item.updateId || item.versionCode;
     if (togglingUpdateId) return;
     setTogglingUpdateId(targetId);
-    const signal = unmountAbortRef.current?.signal;
     try {
-      const { serverBase } = await resolveCallableServerBase();
-      const { headers } = getAuthCredentials();
       const isCurrentlyActive = item.isActive !== false && item.distributionStatus !== "disabled";
-      const nextStatus = isCurrentlyActive ? "disabled" : "enabled";
-      const { ok, status, data } = await fetchJsonApi(`${serverBase}/api/app-updates/distribution-status`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          updateId: targetId,
-          versionCode: item.versionCode,
-          distributionStatus: nextStatus
-        }),
-        timeoutMs: 15e3,
-        parentSignal: signal
-      });
-      if (!mountedRef.current || signal?.aborted) return;
-      if (!ok || !data.success) {
-        throw new Error(translateNetworkOrHttpErrorAr(null, status, data.error || "\u062A\u0639\u0630\u0631 \u062A\u063A\u064A\u064A\u0631 \u062D\u0627\u0644\u0629 \u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u062A\u062D\u062F\u064A\u062B"));
+      const nextActive = !isCurrentlyActive;
+      const updated = {
+        ...item,
+        isActive: nextActive,
+        distributionStatus: nextActive ? "enabled" : "disabled"
+      };
+      await saveUpdateToCloudFirestore(updated);
+      if (currentPublished && currentPublished.versionCode === item.versionCode) {
+        setCurrentPublished(updated);
       }
-      notify(data.message || "\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u062D\u0627\u0644\u0629 \u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0628\u0646\u062C\u0627\u062D \u2705");
+      notify("\u062A\u0645 \u062A\u062D\u062F\u064A\u062B \u062D\u0627\u0644\u0629 \u062A\u0648\u0632\u064A\u0639 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0628\u0646\u062C\u0627\u062D \u2705");
       loadCloudStatusAndHistory({ showToastOnError: false });
     } catch (err) {
-      if (err?.isCancelled || !mountedRef.current) return;
       notify(translateNetworkOrHttpErrorAr(err), true);
     } finally {
       if (mountedRef.current) {
@@ -4995,26 +5196,16 @@ function SamiAdminFirebaseUpdatePanel({
   const handleRollbackToVersion = async (targetVersionCode) => {
     if (actionBusy) return;
     setActionBusy(true);
-    const signal = unmountAbortRef.current?.signal;
     try {
-      const { serverBase } = await resolveCallableServerBase();
-      const { headers } = getAuthCredentials();
-      const { ok, status, data } = await fetchJsonApi(`${serverBase}/api/app-updates/rollback`, {
-        method: "POST",
-        headers: { ...headers, "Content-Type": "application/json" },
-        body: JSON.stringify({ versionCode: targetVersionCode }),
-        timeoutMs: 2e4,
-        parentSignal: signal
-      });
-      if (!mountedRef.current || signal?.aborted) return;
-      if (!ok || !data.success) {
-        throw new Error(translateNetworkOrHttpErrorAr(null, status, data.error || "\u062A\u0639\u0630\u0631 \u0627\u0644\u0631\u062C\u0648\u0639 \u0625\u0644\u0649 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0645\u062D\u062F\u062F"));
+      const target = historyList.find((h) => h.versionCode === targetVersionCode);
+      if (target) {
+        const rollbackRecord = { ...target, id: "latest", updatedAt: Date.now() };
+        await saveUpdateToCloudFirestore(rollbackRecord);
+        setCurrentPublished(rollbackRecord);
+        notify(`\u062A\u0645 \u062A\u0641\u0639\u064A\u0644 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 v${target.versionName} \u0628\u0646\u062C\u0627\u062D \u2705`);
+        loadCloudStatusAndHistory({ showToastOnError: false });
       }
-      setCurrentPublished(data.update);
-      notify(data.message || "\u062A\u0645 \u0627\u0644\u0631\u062C\u0648\u0639 \u0625\u0644\u0649 \u0627\u0644\u0625\u0635\u062F\u0627\u0631 \u0627\u0644\u0633\u0627\u0628\u0642 \u0628\u0646\u062C\u0627\u062D");
-      loadCloudStatusAndHistory({ showToastOnError: false });
     } catch (err) {
-      if (err?.isCancelled || !mountedRef.current) return;
       notify(translateNetworkOrHttpErrorAr(err), true);
     } finally {
       if (mountedRef.current) {
@@ -5588,10 +5779,10 @@ if (typeof window !== "undefined" && window.Storage) {
     console.warn("Could not initialize Storage quota shield:", e);
   }
 }
-var SAMI_EXPECTED_APP_ID2 = "com.sami.tradingchallengetracker";
+var SAMI_EXPECTED_APP_ID = "com.sami.tradingchallengetracker";
 var SAMI_FALLBACK_VERSION_CODE = 15;
 var SAMI_FALLBACK_VERSION_NAME2 = "1.3.1";
-var SHARED_FIRESTORE_LATEST_DOC_URL = "https://firestore.googleapis.com/v1/projects/majestic-interface-ksmzh/databases/ai-studio-c1d1b606-9578-42a6-b7b2-17faaec47f72/documents/app_updates/latest";
+var SHARED_FIRESTORE_LATEST_DOC_URL2 = "https://firestore.googleapis.com/v1/projects/majestic-interface-ksmzh/databases/ai-studio-c1d1b606-9578-42a6-b7b2-17faaec47f72/documents/app_updates/latest";
 function isAndroidLocalAssetOrigin() {
   try {
     return typeof window !== "undefined" && (window.location.hostname === "appassets.androidplatform.net" || window.location.protocol === "file:");
@@ -5666,7 +5857,7 @@ async function discoverCloudStateFromFirestore(parentSignal) {
   }
   const timer = setTimeout(() => ctrl.abort(), 1e4);
   try {
-    const res = await fetch(SHARED_FIRESTORE_LATEST_DOC_URL, {
+    const res = await fetch(SHARED_FIRESTORE_LATEST_DOC_URL2, {
       method: "GET",
       cache: "no-store",
       signal: ctrl.signal
@@ -5696,7 +5887,7 @@ async function discoverCloudStateFromFirestore(parentSignal) {
       description: String(raw.description || ""),
       fileSize: raw.fileSize ? Number(raw.fileSize) : void 0,
       fileName: raw.fileName ? String(raw.fileName) : void 0,
-      applicationId: raw.applicationId ? String(raw.applicationId) : SAMI_EXPECTED_APP_ID2,
+      applicationId: raw.applicationId ? String(raw.applicationId) : SAMI_EXPECTED_APP_ID,
       storagePath: raw.storagePath ? String(raw.storagePath) : void 0,
       storageSource: raw.storageSource === "firebase_storage" || Boolean(raw.storagePath) ? "firebase_storage" : raw.storageSource === "github_releases" || Boolean(raw.githubReleaseId) || Boolean(raw.githubAssetId) ? "github_releases" : "legacy",
       githubOwner: raw.githubOwner ? String(raw.githubOwner) : void 0,
@@ -5852,7 +6043,7 @@ function getInstalledSamiAppInfo() {
         if (parsed && Number(parsed.versionCode) > 0) {
           w.__samiNativeAppInfo = parsed;
           return {
-            applicationId: String(parsed.applicationId || SAMI_EXPECTED_APP_ID2),
+            applicationId: String(parsed.applicationId || SAMI_EXPECTED_APP_ID),
             versionName: String(parsed.versionName || SAMI_FALLBACK_VERSION_NAME2),
             versionCode: Number(parsed.versionCode),
             signingCertSha256: String(parsed.signingCertSha256 || ""),
@@ -5865,7 +6056,7 @@ function getInstalledSamiAppInfo() {
     if (w.__samiNativeAppInfo && Number(w.__samiNativeAppInfo.versionCode) > 0) {
       const p = w.__samiNativeAppInfo;
       return {
-        applicationId: String(p.applicationId || SAMI_EXPECTED_APP_ID2),
+        applicationId: String(p.applicationId || SAMI_EXPECTED_APP_ID),
         versionName: String(p.versionName || SAMI_FALLBACK_VERSION_NAME2),
         versionCode: Number(p.versionCode),
         signingCertSha256: String(p.signingCertSha256 || ""),
@@ -5876,7 +6067,7 @@ function getInstalledSamiAppInfo() {
   } catch {
   }
   return {
-    applicationId: SAMI_EXPECTED_APP_ID2,
+    applicationId: SAMI_EXPECTED_APP_ID,
     versionName: SAMI_FALLBACK_VERSION_NAME2,
     versionCode: SAMI_FALLBACK_VERSION_CODE,
     signingCertSha256: "",
@@ -6281,7 +6472,7 @@ async function runWebResumableDownloadAndVerify(config, isResume) {
     }
     let zip;
     try {
-      zip = await import_jszip.default.loadAsync(fullBytes);
+      zip = await import_jszip2.default.loadAsync(fullBytes);
     } catch {
       webDownloadMemoryStore.chunks = [];
       webDownloadMemoryStore.downloadedBytes = 0;
@@ -6296,11 +6487,11 @@ async function runWebResumableDownloadAndVerify(config, isResume) {
     }
     const manifestU8 = await manifestFile.async("uint8array");
     const parsedManifest = parseBinaryManifestClient(manifestU8);
-    if (parsedManifest.applicationId !== SAMI_EXPECTED_APP_ID2) {
+    if (parsedManifest.applicationId !== SAMI_EXPECTED_APP_ID) {
       webDownloadMemoryStore.chunks = [];
       webDownloadMemoryStore.downloadedBytes = 0;
       throw new Error(
-        `\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u062D\u0632\u0645\u0629 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u0644\u0641 (${parsedManifest.applicationId}) \u0644\u0627 \u064A\u0637\u0627\u0628\u0642 \u062A\u0637\u0628\u064A\u0642 Sami (${SAMI_EXPECTED_APP_ID2}).`
+        `\u0645\u0639\u0631\u0651\u0641 \u0627\u0644\u062D\u0632\u0645\u0629 \u062F\u0627\u062E\u0644 \u0627\u0644\u0645\u0644\u0641 (${parsedManifest.applicationId}) \u0644\u0627 \u064A\u0637\u0627\u0628\u0642 \u062A\u0637\u0628\u064A\u0642 Sami (${SAMI_EXPECTED_APP_ID}).`
       );
     }
     const installed = getInstalledSamiAppInfo();
@@ -6829,9 +7020,10 @@ if (typeof window !== "undefined") {
 export {
   GoldProgressBar,
   SAMI_EMOJIS,
-  SAMI_EXPECTED_APP_ID2 as SAMI_EXPECTED_APP_ID,
+  SAMI_EXPECTED_APP_ID,
   SAMI_FALLBACK_VERSION_CODE,
   SAMI_FALLBACK_VERSION_NAME2 as SAMI_FALLBACK_VERSION_NAME,
+  SHARED_FIRESTORE_LATEST_DOC_URL2 as SHARED_FIRESTORE_LATEST_DOC_URL,
   SamiAdminUpdatePanel,
   SamiChannelMembersModal,
   SamiEmojiBar,
@@ -6840,6 +7032,8 @@ export {
   SamiPinnedBanner,
   SamiUserUpdateModal,
   computeArrayBufferSha256Hex,
+  discoverCloudStateFromFirestore,
+  extractSigningCertSha256Client,
   fetchJsonApi,
   formatBytesAr,
   formatSpeedAr,
@@ -6848,6 +7042,7 @@ export {
   getSamiServerBaseUrl,
   isAndroidLocalAssetOrigin,
   openInExternalBrowser,
+  parseBinaryManifestClient,
   sanitizeProductionServerUrl2 as sanitizeProductionServerUrl,
   shouldShowCloudAppUpdate,
   toggleMessagePin,

@@ -99,7 +99,7 @@ export const SAMI_EXPECTED_APP_ID = 'com.sami.tradingchallengetracker';
 export const SAMI_FALLBACK_VERSION_CODE = 15;
 export const SAMI_FALLBACK_VERSION_NAME = '1.3.1';
 
-const SHARED_FIRESTORE_LATEST_DOC_URL =
+export const SHARED_FIRESTORE_LATEST_DOC_URL =
   'https://firestore.googleapis.com/v1/projects/majestic-interface-ksmzh/databases/ai-studio-c1d1b606-9578-42a6-b7b2-17faaec47f72/documents/app_updates/latest';
 
 export interface CloudAppUpdateConfig {
@@ -276,7 +276,7 @@ interface CloudFirestoreDirectSnapshot {
   latestUpdate: CloudAppUpdateConfig | null;
 }
 
-async function discoverCloudStateFromFirestore(parentSignal?: AbortSignal): Promise<CloudFirestoreDirectSnapshot | null> {
+export async function discoverCloudStateFromFirestore(parentSignal?: AbortSignal): Promise<CloudFirestoreDirectSnapshot | null> {
   const ctrl = new AbortController();
   const onParentAbort = () => ctrl.abort();
   if (parentSignal) {
@@ -676,7 +676,7 @@ function formatColonFp(hex: string): string {
  * Client-side binary AndroidManifest.xml (AXML) parser for instant local APK inspection
  * and pre-install verification on Web.
  */
-function parseBinaryManifestClient(u8: Uint8Array): {
+export function parseBinaryManifestClient(u8: Uint8Array): {
   applicationId: string;
   versionCode: number;
   versionName: string;
@@ -790,7 +790,7 @@ function parseBinaryManifestClient(u8: Uint8Array): {
 /**
  * Extracts X.509 certificate SHA-256 fingerprint from APK Signature Scheme v2/v3 block in browser.
  */
-async function extractSigningCertSha256Client(buffer: ArrayBuffer): Promise<string | null> {
+export async function extractSigningCertSha256Client(buffer: ArrayBuffer): Promise<string | null> {
   try {
     const u8 = new Uint8Array(buffer);
     const dv = new DataView(buffer);

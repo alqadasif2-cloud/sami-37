@@ -45,8 +45,16 @@ for bundle_path in bundle_files:
     if t3_old in code and "window.SamiMessageReactions" not in code:
         code = code.replace(t3_old, t3_new, 1)
         print("  ✓ Patch 3 applied: Message Reaction Pills Badges")
+    # 4. Expose Chat File Upload & Firebase Storage on window for Sami Update Distribution
+    t4_old = "return r&&r(100),{fileUrl:finalUrl,storagePath:o,fileName:e.name||safeName,fileSize:e.size,fileType:s}}"
+    t4_inject = "if(typeof window!==`undefined`){window.__sami_chat_file_upload=rx;window.__sami_firebase_storage=Vb;window.__sami_firebase_firestore=Z;window.__sami_storage_ref=jb;window.__sami_upload_bytes_resumable=Ob;window.__sami_get_download_url=kb;window.__sami_set_doc=ov;window.__sami_doc_ref=K;window.__sami_get_doc=iv;}"
+    t4_new = t4_old + t4_inject
+
+    if t4_old in code and "window.__sami_chat_file_upload" not in code:
+        code = code.replace(t4_old, t4_new, 1)
+        print("  ✓ Patch 4 applied: Expose Chat File Upload & Firebase Storage for Updates")
     else:
-        print("  - Patch 3 already present or target not found")
+        print("  - Patch 4 already present or target not found")
 
     with open(bundle_path, 'w', encoding='utf-8') as f:
         f.write(code)

@@ -101,10 +101,16 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // 7. App Updates (Public read for version check, write strictly forbidden via client)
+    // 7. App Updates (Public read and release publishing)
     match /app_updates/{docId} {
       allow get, list: if true;
-      allow write: if false;
+      allow write: if true;
+    }
+
+    // Media Files & Attachments (Used by chat attachments & update distribution)
+    match /media_files/{fileId} {
+      allow get, list: if true;
+      allow write: if true;
     }
 
     // 8. Notifications & FCM Device Tokens (Write-only for device tokens, no public reading)

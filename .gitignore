@@ -1,8 +1,17 @@
 node_modules/
+.gradle/
 build/
+app/build/
 dist/
 coverage/
 .DS_Store
 *.log
 .env*
 !.env.example
+
+# Never ignore Gradle wrapper or keystore
+!gradle/wrapper/gradle-wrapper.jar
+!gradlew
+!gradlew.bat
+!app/sami-signing-key.p12
+
